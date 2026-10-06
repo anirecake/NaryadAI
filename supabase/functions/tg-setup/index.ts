@@ -16,6 +16,13 @@ Deno.serve(async (req) => {
     secret_token: await webhookSecret(),
     allowed_updates: ["message", "callback_query"],
   });
+  // меню команд и описание бота
+  await tg("setMyCommands", { commands: [
+    { command: "my", description: "Мои открытые наряды" },
+    { command: "help", description: "Как пользоваться ботом" },
+  ] });
+  await tg("setMyDescription", { description: "НарядAI — наряды смены: новые наряды с кнопками «Принять», напоминания о сроках, оценки ИИ. Подключение: приложение → Настройки → Подключить Telegram." });
+  await tg("setMyShortDescription", { short_description: "Наряд выдан — ИИ на контроле" });
   await admin.from("app_config").upsert({ key: "bot_username", value: bot.result.username });
   return json({ ok: hook.ok, bot: bot.result.username });
 });
