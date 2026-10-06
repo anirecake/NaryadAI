@@ -58,4 +58,4 @@ export const useAuth = () => useContext(AuthContext)
 
 // Куда отправить пользователя после входа
 export const homeFor = (role: Employee['role']) =>
-  role === 'worker' ? '/worker' : role === 'master' ? '/master' : '/panel'
+  role === 'worker' ? '/worker' : role === 'master' ? '/master' : role === 'admin' ? '/admin/people' : '/panel'

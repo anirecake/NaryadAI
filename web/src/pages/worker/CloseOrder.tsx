@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Icon } from '../../components/Icon'
 import { PhotoPicker, VoiceTextarea } from '../../components/Inputs'
 import { Layout } from '../../components/Layout'
 import { aiInsights, type Suggestion } from '../../lib/ai'
@@ -99,31 +100,33 @@ export default function CloseOrder() {
 
   if (!order) return <Layout title={t('action.complete')} back="/worker"><p className="muted">…</p></Layout>
 
+  const matCount = Object.keys(qty).length
   return (
-    <Layout title={`${t('action.complete')} №${order.number}`} back="/worker">
-      <div className="card"><b>{order.equipment?.name}</b><div>{order.description}</div></div>
+    <Layout title={`${t('close.title')} №${order.number}`} subtitle={`${order.equipment?.name} · ${order.description}`} back="/worker">
       <div className="form">
-        <section className="field">
-          <span>{t('close.work')}</span>
+        {/* 1. Что сделано */}
+        <section className="step-card">
+          <div className="step-head"><span className={`step-num${work.trim() ? ' done' : ''}`}>{work.trim() ? <Icon name="check" size={16} /> : 1}</span>{t('close.step1')}</div>
           <VoiceTextarea value={work} onChange={setWork} placeholder={t('close.work_ph')} />
+          <div className="field">
+            <span>{t('close.code')}</span>
+            {hint && <div className="ai-hint"><Icon name="sparkle" size={18} /><span>{t('form.ai_code')}: <b>{hint.code}</b> {hint.name}</span></div>}
+            <select value={code} onChange={(e) => setCode(e.target.value)}>
+              <option value="">—</option>
+              {codes.map((c) => <option key={c.code} value={c.code}>{c.code} {c.name}</option>)}
+            </select>
+          </div>
         </section>
 
-        <section className="field">
-          <span>{t('close.code')}</span>
-          {hint && <div className="ai-hint">🤖 {t('form.ai_code')}: <b>{hint.code}</b> {hint.name}</div>}
-          <select value={code} onChange={(e) => setCode(e.target.value)}>
-            <option value="">—</option>
-            {codes.map((c) => <option key={c.code} value={c.code}>{c.code} {c.name}</option>)}
-          </select>
-        </section>
-
-        <section className="field">
-          <span>{t('close.materials')}</span>
+        {/* 2. Материалы */}
+        <section className="step-card">
+          <div className="step-head"><span className={`step-num${matCount ? ' done' : ''}`}>{matCount ? <Icon name="check" size={16} /> : 2}</span>{t('close.step2')}</div>
+          {typical.length > 0 && <span className="hint">{t('close.typical_hint')}</span>}
           {typical.length > 0 && (
             <div className="chips">
               {typical.filter((n) => !qty[n.material_id]).map((n) => (
                 <button key={n.material_id} type="button" className="chip" onClick={() => setQ(n.material_id, Number(n.typical_qty))}>
-                  + {mat(n.material_id)?.name} {Number(n.typical_qty)} {mat(n.material_id)?.unit}
+                  + {mat(n.material_id)?.name} · {Number(n.typical_qty)} {mat(n.material_id)?.unit}
                 </button>
               ))}
             </div>
@@ -132,34 +135,34 @@ export default function CloseOrder() {
             <div key={mid} className="mat-row">
               <span>{mat(Number(mid))?.name}</span>
               <div className="stepper">
-                <button type="button" className="btn" onClick={() => setQ(Number(mid), q - step(Number(mid)))}>−</button>
+                <button type="button" className="btn" aria-label="−" onClick={() => setQ(Number(mid), q - step(Number(mid)))}>−</button>
                 <b>{q} {mat(Number(mid))?.unit}</b>
-                <button type="button" className="btn" onClick={() => setQ(Number(mid), q + step(Number(mid)))}>+</button>
+                <button type="button" className="btn" aria-label="+" onClick={() => setQ(Number(mid), q + step(Number(mid)))}>+</button>
               </div>
             </div>
           ))}
           <input placeholder={t('close.search_material')} value={search} onChange={(e) => setSearch(e.target.value)} />
           {found.map((m) => (
             <button key={m.id} type="button" className="pick" onClick={() => { setQ(m.id, qty[m.id] ?? 1); setSearch('') }}>
-              + {m.name} <span className="muted">({m.unit})</span>
+              <b>+ {m.name}</b><span className="muted">{m.unit}</span>
             </button>
           ))}
         </section>
 
-        <section className="field">
-          <span>{t('close.photo_after')}{unplanned && ' *'}</span>
+        {/* 3. Фото результата */}
+        <section className="step-card">
+          <div className="step-head"><span className={`step-num${photos.length ? ' done' : ''}`}>{photos.length ? <Icon name="check" size={16} /> : 3}</span>{t('close.step3')}{unplanned && <span className="badge prio-high">{t('close.required')}</span>}</div>
+          <span className="hint">{t('close.photo_hint')}</span>
           <PhotoPicker files={photos} onChange={setPhotos} max={3} cameraOnly />
-          {unplanned && <span className="muted">{t('close.photo_required')}</span>}
+          <div className="field">
+            <span>{t('form.comment')}</span>
+            <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('close.comment_ph')} />
+          </div>
         </section>
 
-        <section className="field">
-          <span>{t('form.comment')}</span>
-          <input value={comment} onChange={(e) => setComment(e.target.value)} />
-        </section>
-
-        {error && <p className="error">{error}</p>}
+        {error && <p className="banner">{error}</p>}
         <button className="btn btn-primary btn-xl sticky-submit" disabled={busy || !work.trim()} onClick={() => submit()}>
-          {busy ? t('form.sending') : t('close.submit')}
+          {busy ? t('form.sending') : work.trim() ? t('close.submit') : t('close.fill_hint')}
         </button>
       </div>
 
@@ -167,9 +170,9 @@ export default function CloseOrder() {
         <div className="sheet-backdrop" onClick={() => setConfirmNoPhoto(false)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h3>{t('close.no_photo_title')}</h3>
-            <p>{t('close.no_photo_text')}</p>
-            <button className="btn btn-primary btn-xl" onClick={() => setConfirmNoPhoto(false)}>📷 {t('close.add_photo')}</button>
-            <button className="btn btn-ghost btn-xl" onClick={() => submit(true)}>{t('close.send_anyway')}</button>
+            <p className="muted">{t('close.no_photo_text')}</p>
+            <button className="btn btn-primary btn-xl" onClick={() => setConfirmNoPhoto(false)}><Icon name="camera" /> {t('close.add_photo')}</button>
+            <button className="btn btn-xl" onClick={() => submit(true)}>{t('close.send_anyway')}</button>
           </div>
         </div>
       )}

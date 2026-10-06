@@ -32,10 +32,11 @@ export default function Login() {
 
   return (
     <div className="login">
+     <div className="login-card">
       <div className="login-head">
-        <img src="/icon.svg" alt="" width={56} height={56} />
+        <img src="/icon.svg" alt="" width={48} height={48} />
         <div>
-          <h1>НарядAI</h1>
+          <h1>Наряд<b>AI</b></h1>
           <p className="muted">{t('app.slogan')}</p>
         </div>
         <LangToggle />
@@ -44,7 +45,7 @@ export default function Login() {
       <form onSubmit={submit} className="login-form">
         <label className="field">
           <span>{t('login.tab')}</span>
-          <input inputMode="numeric" autoComplete="username" value={tab}
+          <input inputMode="numeric" autoComplete="username" placeholder="1001" value={tab}
                  onChange={(e) => setTab(e.target.value.replace(/\D/g, ''))} />
         </label>
 
@@ -61,8 +62,10 @@ export default function Login() {
         </div>
 
         {error && <p className="error">{error}</p>}
-        <button className="btn btn-primary btn-xl" disabled={busy || !tab || pin.length < 6}>{t('login.submit')}</button>
+        <button className="btn btn-primary btn-xl" disabled={busy || !tab || pin.length < 6}>{busy ? t('form.sending') : t('login.submit')}</button>
       </form>
+      <p className="cap center">{t('login.help')}</p>
+     </div>
     </div>
   )
 }

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { Icon } from '../components/Icon'
 import { Layout } from '../components/Layout'
+import { Steps } from '../components/OrderCard'
 import { useAuth } from '../lib/auth'
-import { REASONS, WORKER_ACTIONS, type LiveEmployee, type OrderStatus, type Priority } from '../lib/domain'
+import { PRIMARY_ACTION, REASONS, WORKER_ACTIONS, type LiveEmployee, type OrderStatus, type Priority } from '../lib/domain'
 import { dt, fmt1, hoursBetween } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { transition } from '../lib/offline'
@@ -111,6 +113,7 @@ export default function OrderDetail() {
             {o.rework_count > 0 && <span className="badge">{t('order.rework_count')}: {o.rework_count}</span>}
           </div>
           <div className="order-eq">{o.equipment?.name} <span className="muted">· {o.sites?.name} · {o.equipment?.inv_no}</span></div>
+          <Steps status={o.status} />
           <p>{o.description}</p>
           {o.comment && <p className="muted">{o.comment}</p>}
           <dl className="kv">
@@ -124,9 +127,14 @@ export default function OrderDetail() {
 
           {mine && WORKER_ACTIONS[o.status].length > 0 && (
             <div className="actions">
-              {WORKER_ACTIONS[o.status].map((a) => a === 'complete'
-                ? <Link key={a} className="btn btn-xl act-complete" to={`/worker/close/${o.id}`}>{t('action.complete')}</Link>
-                : <button key={a} className={`btn btn-xl act-${a}`} onClick={() => (a === 'reject' || a === 'pause') ? setAsk(a) : workerAct(a)}>{t(`action.${a}`)}</button>)}
+              {WORKER_ACTIONS[o.status].filter((a) => a === PRIMARY_ACTION[o.status]).map((a) => a === 'complete'
+                ? <Link key={a} className="btn btn-primary btn-xl" to={`/worker/close/${o.id}`}>{t('action.complete')}</Link>
+                : <button key={a} className="btn btn-primary btn-xl" onClick={() => workerAct(a)}>{t(`action.${a}`)}</button>)}
+              <div className="actions-secondary">
+                {WORKER_ACTIONS[o.status].filter((a) => a !== PRIMARY_ACTION[o.status]).map((a) => (
+                  <button key={a} className={`btn${a === 'reject' ? ' btn-danger' : ''}`} onClick={() => (a === 'reject' || a === 'pause') ? setAsk(a) : workerAct(a)}>{t(`action.${a}`)}</button>
+                ))}
+              </div>
             </div>
           )}
           {isMaster && !['closed', 'cancelled'].includes(o.status) && (
@@ -137,7 +145,7 @@ export default function OrderDetail() {
                   {(['emergency', 'high', 'normal', 'planned'] as Priority[]).map((p) => <option key={p} value={p}>{t(`priority.${p}`)}</option>)}
                 </select>
               )}
-              <button className="btn act-reject" onClick={() => confirm(t('master.cancel_confirm')) && act('cancel')}>{t('master.cancel')}</button>
+              <button className="btn btn-danger" onClick={() => confirm(t('master.cancel_confirm')) && act('cancel')}>{t('master.cancel')}</button>
             </div>
           )}
           {msg && <p className="error">{msg}</p>}
@@ -145,8 +153,8 @@ export default function OrderDetail() {
 
         {/* Отчёт ИИ (п. 6.4): исполнителю — оценка и что улучшить, мастеру — полная картина */}
         <section className={`card ai-card ${verdictTone}`}>
-          <h3>🤖 {t('ai.check')}</h3>
-          {!review && o.status === 'done' && <p className="pulse">{t('ai.checking')}</p>}
+          <div className="card-title"><Icon name="sparkle" size={18} /> {t('ai.check')}</div>
+          {!review && o.status === 'done' && <p className="pulse"><Icon name="sparkle" size={16} /> {t('ai.checking')}</p>}
           {!review && o.status !== 'done' && <p className="muted">{t('ai.not_yet')}</p>}
           {review && (
             <>
@@ -177,10 +185,10 @@ export default function OrderDetail() {
                   ))}
                 </div>
               </div>
-              <button className="btn btn-xl act-accept" onClick={() => act('approve', { payload: score ? { master_score: score } : {}, comment: score ? t('master.score_changed') : undefined })}>
+              <button className="btn btn-primary btn-xl" onClick={() => act('approve', { payload: score ? { master_score: score } : {}, comment: score ? t('master.score_changed') : undefined })}>
                 ✔ {t('master.approve')}{score ? ` (${score}/5)` : ''}
               </button>
-              <button className="btn btn-xl act-reject" onClick={() => setAsk('return')}>↩ {t('master.return')}</button>
+              <button className="btn btn-danger" onClick={() => setAsk('return')}>↩ {t('master.return')}</button>
             </div>
           )}
         </section>

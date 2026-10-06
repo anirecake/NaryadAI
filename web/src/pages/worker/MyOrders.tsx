@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Icon } from '../../components/Icon'
+import { Empty } from '../../components/Inputs'
 import { Layout } from '../../components/Layout'
 import { OrderCard } from '../../components/OrderCard'
-import { NEEDS_REASON, ORDER_SELECT, PRIORITY_ORDER, REASONS, WORKER_ACTIONS, type Order, type WorkerAction } from '../../lib/domain'
+import { NEEDS_REASON, ORDER_SELECT, PRIMARY_ACTION, PRIORITY_ORDER, REASONS, WORKER_ACTIONS, type Order, type WorkerAction } from '../../lib/domain'
 import { useAuth } from '../../lib/auth'
 import { dt, fmt1 } from '../../lib/format'
 import { useI18n } from '../../lib/i18n'
@@ -12,7 +14,7 @@ import { supabase } from '../../lib/supabase'
 
 interface Closed { id: number; number: number; closed_at: string; equipment: { name: string } | null; ai_reviews: { score: number; master_score: number | null; verdict: string }[] }
 
-// Приложение исполнителя (п. 5.3): очередь нарядов, кнопки действий, оценки закрытых нарядов
+// Приложение исполнителя (п. 5.3): у каждого наряда одна главная кнопка — следующий шаг
 export default function MyOrders() {
   const { employee } = useAuth()
   const { t } = useI18n()
@@ -21,6 +23,7 @@ export default function MyOrders() {
   const [closed, setClosed] = useState<Closed[]>([])
   const [askReason, setAskReason] = useState<{ order: Order; action: 'reject' | 'pause' } | null>(null)
   const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState<number | null>(null)
   const [pending, setPending] = useState(queuedCount())
 
   const load = useCallback(async () => {
@@ -31,8 +34,9 @@ export default function MyOrders() {
       supabase.from('orders').select('id, number, closed_at, equipment(name), ai_reviews(score, master_score, verdict)')
         .eq('assignee_id', employee.id).eq('status', 'closed').order('closed_at', { ascending: false }).limit(10),
     ])
-    // аварийные сверху, затем по сроку
-    setOrders(((open.data as Order[]) ?? []).sort((a, b) =>
+    // в работе — сверху, затем аварийные, затем по сроку
+    const rank = (o: Order) => (o.status === 'in_progress' ? -1 : 0)
+    setOrders(((open.data as Order[]) ?? []).sort((a, b) => rank(a) - rank(b) ||
       PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority) || a.due_at.localeCompare(b.due_at)))
     setClosed((done.data as unknown as Closed[]) ?? [])
     setPending(queuedCount())
@@ -49,30 +53,61 @@ export default function MyOrders() {
   const act = async (order: Order, action: WorkerAction, reason?: string) => {
     if (action === 'complete') return navigate(`/worker/close/${order.id}`)
     if (NEEDS_REASON.includes(action) && !reason) return setAskReason({ order, action: action as 'reject' | 'pause' })
+    setBusy(order.id)
     const res = await transition(order.id, action, reason ?? null)
     setMsg(res.queued ? t('offline.queued') : res.error ?? '')
     setAskReason(null)
-    load()
+    await load()
+    setBusy(null)
   }
 
+  const active = orders.filter((o) => !['done', 'ai_review'].includes(o.status))
+  const checking = orders.filter((o) => ['done', 'ai_review'].includes(o.status))
+
   return (
-    <Layout title={t('worker.title')}>
-      {!navigator.onLine && <p className="banner">📴 {t('offline.banner')}</p>}
-      {pending > 0 && <p className="banner">⏳ {t('offline.pending', { n: pending })}</p>}
-      {msg && <p className="error">{msg}</p>}
-      {orders.length === 0 && <p className="muted center">{t('worker.empty')}</p>}
+    <Layout title={t('worker.title')} subtitle={active.length ? t('worker.count', { n: active.length }) : undefined}>
+      {!navigator.onLine && <p className="banner"><Icon name="alert" /> {t('offline.banner')}</p>}
+      {pending > 0 && <p className="banner info"><Icon name="clock" /> {t('offline.pending', { n: pending })}</p>}
+      {msg && <p className="banner">{msg}</p>}
+
+      {active.length === 0 && <div className="card"><Empty text={t('worker.empty')} hint={t('worker.empty_hint')} /></div>}
       <div className="stack">
-        {orders.map((o) => (
-          <OrderCard key={o.id} order={o} href={`/order/${o.id}`}>
-            <div className="actions">
-              {WORKER_ACTIONS[o.status].map((a) => (
-                <button key={a} className={`btn btn-xl act-${a}`} onClick={() => act(o, a)}>{t(`action.${a}`)}</button>
-              ))}
-              {o.status === 'done' && <p className="pulse">🤖 {t('ai.checking')}</p>}
-            </div>
-          </OrderCard>
-        ))}
+        {active.map((o) => {
+          const primary = PRIMARY_ACTION[o.status]
+          const rest = WORKER_ACTIONS[o.status].filter((a) => a !== primary)
+          return (
+            <OrderCard key={o.id} order={o} href={`/order/${o.id}`}>
+              <div className="actions">
+                {primary && (
+                  <button className="btn btn-primary btn-xl" disabled={busy === o.id} onClick={() => act(o, primary)}>
+                    {t(`action.${primary}`)}
+                  </button>
+                )}
+                {rest.length > 0 && (
+                  <div className="actions-secondary">
+                    {rest.map((a) => (
+                      <button key={a} className={`btn${a === 'reject' ? ' btn-danger' : ''}`} disabled={busy === o.id} onClick={() => act(o, a)}>{t(`action.${a}`)}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </OrderCard>
+          )
+        })}
       </div>
+
+      {checking.length > 0 && (
+        <>
+          <h2>{t('worker.on_check')}</h2>
+          <div className="stack">
+            {checking.map((o) => (
+              <OrderCard key={o.id} order={o} href={`/order/${o.id}`}>
+                {o.status === 'done' && <span className="pulse"><Icon name="sparkle" size={16} /> {t('ai.checking')}</span>}
+              </OrderCard>
+            ))}
+          </div>
+        </>
+      )}
 
       {closed.length > 0 && (
         <>
@@ -82,7 +117,7 @@ export default function MyOrders() {
               const r = c.ai_reviews?.[c.ai_reviews.length - 1]
               return (
                 <Link key={c.id} to={`/order/${c.id}`} className="list-row">
-                  <span>№{c.number} · {c.equipment?.name}<br /><span className="muted">{dt(c.closed_at)}</span></span>
+                  <span>№{c.number} · {c.equipment?.name}<br /><span className="cap">{dt(c.closed_at)}</span></span>
                   <b className="score">{r ? `${fmt1(r.master_score ?? r.score)}/5` : '—'}</b>
                 </Link>
               )

@@ -41,6 +41,7 @@ await step('0003_security (без pg_cron)', () => db.exec(sec));
 await step('0005_ai_reports', () => db.exec(read('supabase/migrations/0005_ai_reports.sql')));
 await step('0006_security_hardening', () => db.exec(read('supabase/migrations/0006_security_hardening.sql')));
 await step('seed.sql', () => db.exec(read('data/seed.sql')));
+await step('0007_admin', () => db.exec(read('supabase/migrations/0007_admin.sql')));
 await db.exec(`insert into private.app_secrets values ('functions_url', 'https://x.supabase.co/functions/v1'), ('anon_key', 'anon')`);
 
 const one = async (sql, params) => (await db.query(sql, params)).rows[0];
@@ -134,3 +135,13 @@ await step('act_as: исполнитель из Telegram ставит на па�
   const cur = (await one(`select id from orders where assignee_id = $1 and status = 'in_progress'`, [qWorker])).id;
   return (await one(`select status from act_as($1, $2, 'pause', 'ждёт запчасти')`, [qWorker, cur])).status;
 });
+
+// ── 0007: увольнение и «на смене» ──
+await db.exec(`select set_config('test.role', '', false)`);
+await as(master);
+await step('мастер отмечает «на смене» через set_on_shift', async () => { await one(`select set_on_shift($1, false)`, [w2]); return (await one(`select on_shift from employees where id = $1`, [w2])).on_shift; });
+await as(null);
+await db.query(`update employees set active = false where id = $1`, [w2]);
+await step('уволенный не виден в живых статусах', async () => (await one(`select count(*) n from employee_live_status where id = $1`, [w2])).n);
+await as(w2);
+await step('уволенный не может действовать', async () => (await one(`select (current_employee()).id`)).id ?? 'нет доступа');

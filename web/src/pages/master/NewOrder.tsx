@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Icon } from '../../components/Icon'
 import { PhotoPicker, QrScanner, Segmented, VoiceTextarea } from '../../components/Inputs'
 import { Layout } from '../../components/Layout'
 import { aiInsights, type Suggestion } from '../../lib/ai'
@@ -109,61 +110,68 @@ export default function NewOrder() {
   const liveLabel = (p: { live_status: string; queue_count?: number; current_order_number?: number | null }) =>
     t(`live.${p.live_status}`, { n: p.live_status === 'busy' ? p.current_order_number ?? '' : p.queue_count ?? 0 })
 
+  const eq = equipment.find((e) => e.id === equipmentId)
+  const chosen = [...candidates.map((c) => ({ id: c.employee_id, name: c.full_name })), ...people.map((p) => ({ id: p.id, name: p.full_name }))].find((x) => x.id === assignee)
+
   return (
-    <Layout title={t('order.new')} back="/master">
+    <Layout title={t('order.new')} subtitle={t('form.subtitle')} back="/master">
       <div className="form">
-        <section className="field">
-          <span>{t('form.equipment')}</span>
+        {/* 1. Что сломалось */}
+        <section className="step-card">
+          <div className="step-head"><span className={`step-num${equipmentId && description.trim() ? ' done' : ''}`}>{equipmentId && description.trim() ? <Icon name="check" size={16} /> : 1}</span>{t('form.step1')}</div>
+          <button type="button" className="btn btn-primary btn-xl" onClick={() => setScan(true)}><Icon name="qr" size={22} /> {t('qr.scan_long')}</button>
           <div className="row">
-            <button type="button" className="btn btn-primary qr-btn" onClick={() => setScan(true)}>▦ {t('qr.scan')}</button>
-            <select value={siteId} onChange={(e) => { setSiteId(e.target.value ? Number(e.target.value) : ''); setEquipmentId('') }}>
+            <select value={siteId} aria-label={t('form.site')} onChange={(e) => { setSiteId(e.target.value ? Number(e.target.value) : ''); setEquipmentId('') }}>
               <option value="">{t('form.site')}</option>
               {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-          <select value={equipmentId} onChange={(e) => {
+          <select value={equipmentId} aria-label={t('form.choose_equipment')} onChange={(e) => {
             const id = e.target.value ? Number(e.target.value) : ''
             setEquipmentId(id)
-            const eq = equipment.find((x) => x.id === id)
-            if (eq) setSiteId(eq.site_id)
+            const found = equipment.find((x) => x.id === id)
+            if (found) setSiteId(found.site_id)
           }}>
             <option value="">{t('form.choose_equipment')}</option>
             {eqList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
-        </section>
-
-        <section className="field">
-          <span>{t('form.description')}</span>
-          <VoiceTextarea value={description} onChange={setDescription} placeholder={t('form.description_ph')} />
+          <div className="field">
+            <span>{t('form.description')}</span>
+            <VoiceTextarea value={description} onChange={setDescription} placeholder={t('form.description_ph')} />
+          </div>
           {suggestion && (
-            <div className="ai-hint">
-              🤖 {t('form.ai_code')}: <b>{suggestion.code}</b> {suggestion.name} · {t('form.norm')} {suggestion.norm_hours} ч · {suggestion.specialty}
+            <div className="ai-hint"><Icon name="sparkle" size={18} />
+              <span>{t('form.ai_code')}: <b>{suggestion.code}</b> {suggestion.name}. {t('form.norm')} {suggestion.norm_hours} ч, {suggestion.specialty}</span>
             </div>
           )}
         </section>
 
-        <section className="field">
-          <span>{t('form.priority')}</span>
+        {/* 2. Срочность */}
+        <section className="step-card">
+          <div className="step-head"><span className="step-num done"><Icon name="check" size={16} /></span>{t('form.step2')}</div>
           <Segmented value={priority} onChange={setPriority} options={[
             { value: 'emergency', label: t('priority.emergency'), tone: 'danger' },
             { value: 'high', label: t('priority.high'), tone: 'warn' },
             { value: 'normal', label: t('priority.normal') },
             { value: 'planned', label: t('priority.planned') },
           ]} />
+          {priority === 'emergency' && <span className="hint">{t('form.emergency_hint')}</span>}
         </section>
 
-        <section className="field">
-          <span>{t('form.assignee')}</span>
-          {candidates.length > 0 && <div className="muted">🤖 {t('form.ai_assignee')}</div>}
+        {/* 3. Кто сделает */}
+        <section className="step-card">
+          <div className="step-head"><span className={`step-num${assignee ? ' done' : ''}`}>{assignee ? <Icon name="check" size={16} /> : 3}</span>{t('form.step3')}</div>
+          {!equipmentId && <span className="hint">{t('form.pick_equipment_first')}</span>}
+          {candidates.length > 0 && <div className="ai-hint"><Icon name="sparkle" size={18} /><span>{t('form.ai_assignee')}</span></div>}
           <div className="pick-list">
             {candidates.map((c, i) => (
               <button key={c.employee_id} type="button" className={`pick${assignee === c.employee_id ? ' on' : ''}`} onClick={() => pick(c.employee_id)}>
-                <b>{i === 0 && '★ '}{c.full_name}</b>
+                <b>{assignee === c.employee_id && <Icon name="check" size={16} />}{c.full_name}{i === 0 && <span className="badge plain">{t('form.best')}</span>}</b>
                 <span className="muted">{c.reason}</span>
               </button>
             ))}
           </div>
-          <button type="button" className="btn btn-ghost" onClick={() => setShowAll(!showAll)}>{showAll ? '▲' : '▼'} {t('form.all_workers')}</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAll(!showAll)}>{showAll ? t('form.hide_all') : t('form.all_workers')}</button>
           {showAll && (
             <div className="pick-list">
               {people.map((p) => (
@@ -177,28 +185,30 @@ export default function NewOrder() {
           )}
         </section>
 
-        <section className="field">
-          <span>{t('form.due')}</span>
+        {/* 4. Срок и фото */}
+        <section className="step-card">
+          <div className="step-head"><span className="step-num done"><Icon name="check" size={16} /></span>{t('form.step4')}</div>
           <Segmented value={String(hours ?? 'norm')} onChange={(v) => { setHours(v === 'norm' ? null : Number(v)); setCustomDue('') }} options={[
-            { value: 'norm', label: `${t('form.by_norm')} ${suggestion?.norm_hours ?? normHours} ч` },
+            { value: 'norm', label: `${t('form.by_norm')} · ${suggestion?.norm_hours ?? normHours} ч` },
             { value: '1', label: '1 ч' }, { value: '2', label: '2 ч' }, { value: '4', label: '4 ч' }, { value: '8', label: '8 ч' },
           ]} />
-          <input type="datetime-local" value={customDue} onChange={(e) => setCustomDue(e.target.value)} aria-label={t('form.due_exact')} />
+          <details className="fold">
+            <summary className="label">{t('form.due_exact')}</summary>
+            <input type="datetime-local" value={customDue} onChange={(e) => setCustomDue(e.target.value)} aria-label={t('form.due_exact')} />
+          </details>
+          <div className="field">
+            <span>{t('form.photos_before')}</span>
+            <PhotoPicker files={photos} onChange={setPhotos} max={5} />
+          </div>
+          <div className="field">
+            <span>{t('form.comment')}</span>
+            <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('form.comment_ph')} />
+          </div>
         </section>
 
-        <section className="field">
-          <span>{t('form.photos_before')}</span>
-          <PhotoPicker files={photos} onChange={setPhotos} max={5} />
-        </section>
-
-        <section className="field">
-          <span>{t('form.comment')}</span>
-          <input value={comment} onChange={(e) => setComment(e.target.value)} />
-        </section>
-
-        {error && <p className="error">{error}</p>}
+        {error && <p className="banner">{error}</p>}
         <button className="btn btn-primary btn-xl sticky-submit" disabled={!canSubmit} onClick={submit}>
-          {busy ? t('form.sending') : t('form.issue')}
+          {busy ? t('form.sending') : canSubmit ? t('form.issue_to', { eq: eq?.name ?? '', who: chosen?.name.split(' ').slice(0, 2).join(' ') ?? '' }) : t('form.fill_hint')}
         </button>
       </div>
       {scan && <QrScanner onResult={onQr} onClose={() => setScan(false)} />}

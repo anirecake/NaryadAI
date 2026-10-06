@@ -77,3 +77,8 @@ export const PRIORITY_ORDER: Priority[] = ['emergency', 'high', 'normal', 'plann
 
 // Наряд с названием оборудования и ФИО исполнителя (у orders два FK на employees — указываем явно)
 export const ORDER_SELECT = '*, equipment(name), assignee:employees!orders_assignee_id_fkey(full_name)'
+
+// Главная кнопка исполнителя — следующий шаг; остальные действия показываются мельче
+export const PRIMARY_ACTION: Partial<Record<OrderStatus, WorkerAction>> = {
+  issued: 'accept', accepted: 'start', queued: 'start', in_progress: 'complete', paused: 'start', rework: 'start',
+}

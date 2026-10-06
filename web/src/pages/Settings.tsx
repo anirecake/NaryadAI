@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Icon } from '../components/Icon'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../lib/auth'
 import { useI18n } from '../lib/i18n'
@@ -7,7 +8,7 @@ import { supabase } from '../lib/supabase'
 
 // Настройки: подключение Telegram (push на телефон), демо-сброс смены, QR-коды
 export default function Settings() {
-  const { employee } = useAuth()
+  const { employee, logout } = useAuth()
   const { t } = useI18n()
   const [bot, setBot] = useState<string | null>(null)
   const [link, setLink] = useState('')
@@ -45,8 +46,15 @@ export default function Settings() {
 
   return (
     <Layout title={t('settings.title')}>
+      {employee && (
+        <section className="card me-card">
+          <span className="av">{employee.full_name.split(' ').slice(0, 2).map((x) => x[0]).join('')}</span>
+          <div className="me-text"><b>{employee.full_name}</b><small>{t(`role.${employee.role}`)} · {t('login.tab')} {employee.tab_no}</small></div>
+          <button className="btn" onClick={logout}><Icon name="logout" size={18} /> {t('nav.logout')}</button>
+        </section>
+      )}
       <section className="card">
-        <h3>📲 Telegram</h3>
+        <div className="card-title"><Icon name="bell" size={18} /> Telegram</div>
         <p className="muted">{t('settings.tg_intro')}</p>
         {connected && <p>✔ {t('settings.tg_connected')}</p>}
         {bot ? (
@@ -59,15 +67,15 @@ export default function Settings() {
       </section>
 
       <section className="card">
-        <h3>🔔 {t('settings.browser_notif')}</h3>
+        <div className="card-title"><Icon name="bell" size={18} /> {t('settings.browser_notif')}</div>
         <button className="btn" onClick={notifPermission}>{t('settings.allow_notif')}</button>
       </section>
 
       {staff && (
         <section className="card">
-          <h3>🎬 {t('settings.demo')}</h3>
+          <div className="card-title"><Icon name="play" size={18} /> {t('settings.demo')}</div>
           <p className="muted">{t('settings.demo_text')}</p>
-          <button className="btn act-reject" onClick={resetDemo}>{t('settings.reset')}</button>
+          <button className="btn btn-danger" onClick={resetDemo}>{t('settings.reset')}</button>
           <p><Link to="/qr">▦ {t('settings.qr_print')}</Link> · <a href="/demo/seed.sql" download>⬇ {t('settings.dataset')}</a></p>
         </section>
       )}

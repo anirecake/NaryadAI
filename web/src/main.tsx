@@ -1,8 +1,7 @@
 import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import './index.css'
-import './screens.css'
+import './styles.css'
 import { AuthProvider, homeFor, useAuth } from './lib/auth'
 import type { Role } from './lib/domain'
 import { I18nProvider, useI18n } from './lib/i18n'
@@ -15,6 +14,8 @@ import Settings from './pages/Settings'
 import Board from './pages/master/Board'
 import NewOrder from './pages/master/NewOrder'
 import Panel from './pages/panel/Panel'
+import Catalog from './pages/admin/Catalog'
+import People from './pages/admin/People'
 import CloseOrder from './pages/worker/CloseOrder'
 import MyOrders from './pages/worker/MyOrders'
 
@@ -37,7 +38,7 @@ function Setup() {
   const { t } = useI18n()
   return (
     <div className="login">
-      <div className="card">
+      <div className="card login-card">
         <h1>{t('setup.title')}</h1>
         <p>{t('setup.text')}</p>
       </div>
@@ -62,6 +63,8 @@ function App() {
       <Route path="/panel" element={<RequireRole roles={STAFF}><Panel /></RequireRole>} />
       <Route path="/qr" element={<RequireRole roles={STAFF}><QrPrint /></RequireRole>} />
       <Route path="/settings" element={<RequireRole><Settings /></RequireRole>} />
+      <Route path="/admin/people" element={<RequireRole roles={['admin']}><People /></RequireRole>} />
+      <Route path="/admin/catalog" element={<RequireRole roles={['admin']}><Catalog /></RequireRole>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
