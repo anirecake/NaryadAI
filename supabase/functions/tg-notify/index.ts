@@ -1,20 +1,12 @@
 // Уведомление в Telegram. Вызывается триггером БД на вставку в notifications.
-// Наряд приходит карточкой: оформление, фото неисправности, кнопки следующего шага под роль.
+// Приходит коротким: в пуше видно «🚨 Аварийная поломка» и что/до скольки; «Подробнее» разворачивает карточку.
 import { admin, cors, isHookCall, json } from "../_shared/common.ts";
 import { BOT_TOKEN, tg } from "../_shared/telegram.ts";
-import { beforePhotoUrl, esc, keyboard, loadOrder, orderText } from "../_shared/tgui.ts";
+import { beforePhotoUrl, compactText, headline, keyboard, loadOrder } from "../_shared/tgui.ts";
 
-// Заголовок карточки по виду уведомления
-const HEADLINE: Record<string, (role: string) => string | undefined> = {
-  new_order: () => undefined,
-  remind: () => "⏰ Скоро срок",
-  overdue: () => "❗ Наряд просрочен",
-  manager_overdue: () => "⚠️ Долгая просрочка",
-  accept_timeout: () => "⌛ Исполнитель не принял наряд",
-  rejected: () => "✖ Исполнитель отклонил наряд — нужно переназначить",
-  rework: () => "↩ Наряд возвращён на доработку",
-  verdict: (role) => role === "worker" ? "🤖 Оценка ИИ" : "🤖 ИИ проверил наряд",
-};
+// Без звука: то, что не требует действия прямо сейчас
+const SILENT = (kind: string, priority: string, role: string) =>
+  (kind === "verdict" && role === "worker") || (kind === "new_order" && priority === "planned");
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -36,10 +28,9 @@ Deno.serve(async (req) => {
   if (!order) {
     res = await tg("sendMessage", { chat_id: chatId, text: n.text });
   } else {
-    // пояснение из уведомления (причина возврата, вердикт, кандидат на замену) — под карточкой
-    const note = n.kind === "new_order" ? undefined : `<i>${esc(n.text.replace(/^[^\wА-Яа-яЁё№]+/u, ""))}</i>`;
-    const text = orderText(order, HEADLINE[n.kind]?.(role), note);
-    const markup = { inline_keyboard: keyboard(order, role) };
+    const text = compactText(order, headline(n.kind, order, role));
+    const common = { chat_id: chatId, parse_mode: "HTML", reply_markup: { inline_keyboard: keyboard(order, role) },
+      disable_notification: SILENT(n.kind, order.priority, role) };
 
     // новому наряду прикладываем фото неисправности (мастер загружает его сразу после выдачи)
     let photo: string | null = null;
@@ -50,11 +41,9 @@ Deno.serve(async (req) => {
       }
     }
     res = photo
-      ? await tg("sendPhoto", { chat_id: chatId, photo, caption: text.slice(0, 1024), parse_mode: "HTML", reply_markup: markup })
-      : await tg("sendMessage", { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup, link_preview_options: { is_disabled: true } });
-    if (!res.ok && photo) {   // фото не отдалось — шлём без него
-      res = await tg("sendMessage", { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
-    }
+      ? await tg("sendPhoto", { ...common, photo, caption: text })
+      : await tg("sendMessage", { ...common, text, link_preview_options: { is_disabled: true } });
+    if (!res.ok && photo) res = await tg("sendMessage", { ...common, text });   // фото не отдалось — шлём без него
   }
   if (res.ok) await admin.from("notifications").update({ sent_tg_at: new Date().toISOString() }).eq("id", n.id);
   return json({ ok: res.ok, error: res.description });

@@ -5,7 +5,7 @@
 // verify_jwt выключен: Telegram не шлёт JWT, вместо этого проверяется секрет вебхука.
 import { admin, APP_URL, json } from "../_shared/common.ts";
 import { BOT_TOKEN, tg, webhookSecret } from "../_shared/telegram.ts";
-import { candidatesKeyboard, esc, keyboard, loadOrder, orderText, REASONS, type TgOrder } from "../_shared/tgui.ts";
+import { candidatesKeyboard, esc, firstLine, isExpanded, keyboard, loadOrder, REASONS, reasonKeyboard, render, statusHeadline, type TgOrder } from "../_shared/tgui.ts";
 
 const DONE_TOAST: Record<string, string> = {
   accept: "✅ Принят в работу", queue: "⏳ Поставлен в очередь", start: "▶ Исполнение начато",
@@ -13,7 +13,7 @@ const DONE_TOAST: Record<string, string> = {
 };
 
 const HELP = `<b>НарядAI — бот смены</b>
-Сюда приходят наряды и напоминания. Кнопки под нарядом:
+Сюда приходят наряды и напоминания — коротко, «▾ Подробнее» раскрывает всё. Кнопки под нарядом:
 • <b>Принять / В очередь / Отклонить</b> — новый наряд
 • <b>Начать</b>, <b>Пауза</b> — по ходу работы
 • <b>Закрыть наряд</b> — откроет приложение: работы, материалы, фото
@@ -27,10 +27,12 @@ async function employeeByChat(chatId: number) {
   return data?.active ? data : null;
 }
 
-// Обновить карточку на месте (текст или подпись к фото)
-async function refresh(msg: { chat: { id: number }; message_id: number; photo?: unknown }, o: TgOrder, role: string, headline?: string, markup?: unknown) {
-  const text = orderText(o, headline)
-  const reply_markup = markup ?? { inline_keyboard: keyboard(o, role) };
+// Обновить карточку на месте (текст или подпись к фото), сохраняя вид: короткий или развёрнутый
+type Msg = { chat: { id: number }; message_id: number; photo?: unknown; text?: string; caption?: string };
+async function refresh(msg: Msg, o: TgOrder, role: string, head: string, opts: { expanded?: boolean; markup?: unknown } = {}) {
+  const expanded = opts.expanded ?? isExpanded(msg);
+  const text = render(o, head, expanded);
+  const reply_markup = opts.markup ?? { inline_keyboard: keyboard(o, role, expanded) };
   if (msg.photo) {
     return tg("editMessageCaption", { chat_id: msg.chat.id, message_id: msg.message_id, caption: text.slice(0, 1024), parse_mode: "HTML", reply_markup });
   }
@@ -47,7 +49,7 @@ async function myOrders(chatId: number, emp: { id: string; role: string }) {
   await tg("sendMessage", { chat_id: chatId, text: emp.role === "worker" ? `Ваши открытые наряды (${data.length}):` : `Требуют внимания (${data.length}):` });
   for (const row of data) {
     const o = await loadOrder(row.id);
-    if (o) await tg("sendMessage", { chat_id: chatId, text: orderText(o), parse_mode: "HTML", reply_markup: { inline_keyboard: keyboard(o, emp.role) }, link_preview_options: { is_disabled: true } });
+    if (o) await tg("sendMessage", { chat_id: chatId, text: render(o, statusHeadline(o), false), parse_mode: "HTML", reply_markup: { inline_keyboard: keyboard(o, emp.role) }, disable_notification: true });
   }
 }
 
@@ -102,16 +104,15 @@ Deno.serve(async (req) => {
 
   let toast = "";
   let error = "";
-  if (kind === "R") {                                   // показать причины отказа / паузы
+  if (kind === "e" || kind === "c") {                   // развернуть / свернуть карточку
+    await refresh(cb.message, o, emp.role, firstLine(cb.message) || statusHeadline(o), { expanded: kind === "e" });
+  } else if (kind === "R") {                            // показать причины отказа / паузы
     const action = extra === "pause" ? "pause" : "reject";
-    await refresh(cb.message, o, emp.role, action === "pause" ? "Почему пауза?" : "Почему отклоняете?", {
-      inline_keyboard: [...REASONS[action].map((r, i) => [{ text: r, callback_data: `${action === "pause" ? "p" : "j"}:${o.id}:${i}` }]),
-        [{ text: "← Назад", callback_data: `k:${o.id}` }]],
-    });
+    await refresh(cb.message, o, emp.role, action === "pause" ? "Почему пауза?" : "Почему отклоняете?", { markup: { inline_keyboard: reasonKeyboard(o, action) } });
   } else if (kind === "k") {                            // назад к обычным кнопкам
-    await refresh(cb.message, o, emp.role);
+    await refresh(cb.message, o, emp.role, statusHeadline(o));
   } else if (kind === "r") {                            // мастер: выбрать, кому переназначить
-    await refresh(cb.message, o, emp.role, "Кому передать? ИИ предлагает:", { inline_keyboard: await candidatesKeyboard(o) });
+    await refresh(cb.message, o, emp.role, "Кому передать? ИИ предлагает:", { markup: { inline_keyboard: await candidatesKeyboard(o) } });
   } else {
     let r;
     if (kind === "a" || kind === "m") r = await admin.rpc("act_as", { p_actor: emp.id, p_order_id: o.id, p_action: extra });
@@ -126,7 +127,7 @@ Deno.serve(async (req) => {
     if (r?.error) error = r.error.message;
     else toast ||= DONE_TOAST[extra] ?? "Готово";
     const fresh = await loadOrder(o.id);
-    if (fresh) await refresh(cb.message, fresh, emp.role, error ? undefined : toast);
+    if (fresh) await refresh(cb.message, fresh, emp.role, error ? statusHeadline(fresh) : toast);
   }
   await tg("answerCallbackQuery", { callback_query_id: cb.id, text: error ? `Не выполнено: ${error}` : toast || undefined, show_alert: Boolean(error) });
   return json({ ok: true });
