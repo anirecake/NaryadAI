@@ -18,6 +18,8 @@ export function VoiceTextarea({ value, onChange, placeholder, rows = 3 }: {
           <Icon name="mic" size={22} />
         </button>
       )}
+      {speech.listening && <p className="hint voice-live">🎤 {speech.interim || t('voice.listening')}</p>}
+      {!speech.listening && speech.error && <p className="hint voice-error">{t(speech.error)}</p>}
     </div>
   )
 }
