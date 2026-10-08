@@ -2,6 +2,7 @@ import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './styles.css'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider, homeFor, useAuth } from './lib/auth'
 import type { Role } from './lib/domain'
 import { I18nProvider, useI18n } from './lib/i18n'
@@ -72,6 +73,7 @@ function App() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <ErrorBoundary>
     <I18nProvider>
       <AuthProvider>
         <NotificationsProvider>
@@ -81,5 +83,6 @@ createRoot(document.getElementById('root')!).render(
         </NotificationsProvider>
       </AuthProvider>
     </I18nProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

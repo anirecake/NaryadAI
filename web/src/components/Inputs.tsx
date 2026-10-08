@@ -142,23 +142,28 @@ export function QrScanner({ onResult, onClose }: { onResult: (text: string) => v
   const { t } = useI18n()
   const [error, setError] = useState('')
   useEffect(() => {
-    let stop: (() => Promise<void>) | null = null
+    let q: import('html5-qrcode').Html5Qrcode | null = null
+    let cancelled = false
     let done = false
+    // stop() библиотеки бросает исключение синхронно, если камера уже выключена, —
+    // повторный вызов при закрытии окна ронял всё приложение (белый экран)
+    const stop = async () => { try { if (q?.isScanning) await q.stop() } catch { /* уже остановлен */ } }
     ;(async () => {
       const { Html5Qrcode } = await import('html5-qrcode')
-      const q = new Html5Qrcode('qr-reader')
-      stop = () => q.stop().catch(() => {})
+      if (cancelled) return
+      q = new Html5Qrcode('qr-reader')
       try {
         await q.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, (text) => {
           if (done) return
           done = true
-          stop?.().then(() => onResult(text))
+          stop().then(() => onResult(text))
         }, () => {})
+        if (cancelled) await stop()   // окно закрыли, пока включалась камера
       } catch {
-        setError(t('qr.no_camera'))
+        if (!cancelled) setError(t('qr.no_camera'))
       }
     })()
-    return () => { stop?.() }
+    return () => { cancelled = true; void stop() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="sheet-backdrop" onClick={onClose}>
